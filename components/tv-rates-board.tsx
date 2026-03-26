@@ -260,11 +260,12 @@ export function TvRatesBoard({ initialSnapshot }: TvRatesBoardProps) {
 
   const status = useMemo(() => buildStatus(snapshot, now, networkIssue), [networkIssue, now, snapshot]);
   const weatherLabel = useMemo(() => buildWeatherLabel(snapshot), [snapshot]);
-  const hasLogo = Boolean(currentCard.logoUrl);
 
   if (!currentCard) {
     return <EmptyState issues={snapshot.issues} />;
   }
+
+  const hasLogo = Boolean(currentCard.logoUrl);
 
   return (
     <section className='metal-panel panel-enter flex h-full min-h-[82vh] w-full flex-col justify-between overflow-hidden rounded-[2.8rem] px-6 py-6 lg:px-10 lg:py-10'>
