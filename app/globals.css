@@ -1,0 +1,87 @@
+@import "tailwindcss";
+
+:root {
+  --background: #f0eadc;
+  --foreground: #13283f;
+  --surface: rgba(255, 250, 240, 0.88);
+  --surface-strong: rgba(255, 251, 244, 0.96);
+  --line: rgba(19, 40, 63, 0.14);
+  --accent: #d2672f;
+  --accent-soft: #f2b37a;
+  --muted: #5b6c80;
+  --ok: #0f766e;
+  --warn: #b45309;
+  --danger: #b42318;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-montserrat);
+  --font-mono: var(--font-roboto-mono);
+}
+
+html {
+  min-height: 100%;
+  background:
+    radial-gradient(circle at top left, rgba(210, 103, 47, 0.22), transparent 28%),
+    radial-gradient(circle at right 18%, rgba(242, 179, 122, 0.24), transparent 20%),
+    linear-gradient(145deg, #e6dcc8 0%, #f0eadc 30%, #dbe4ef 100%);
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-montserrat), sans-serif;
+}
+
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  background:
+    linear-gradient(120deg, rgba(255, 255, 255, 0.45), transparent 32%),
+    radial-gradient(circle at 20% 15%, rgba(255, 255, 255, 0.35), transparent 18%);
+  opacity: 0.85;
+}
+
+::selection {
+  background: rgba(210, 103, 47, 0.24);
+}
+
+.metal-panel {
+  background:
+    linear-gradient(180deg, var(--surface-strong) 0%, var(--surface) 100%);
+  border: 1px solid var(--line);
+  box-shadow:
+    0 22px 44px rgba(19, 40, 63, 0.12),
+    inset 0 1px 0 rgba(255, 255, 255, 0.62);
+}
+
+.data-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+@media (max-width: 900px) {
+  .data-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@keyframes panel-enter {
+  from {
+    opacity: 0;
+    transform: translateY(12px) scale(0.985);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.panel-enter {
+  animation: panel-enter 420ms ease-out;
+}
