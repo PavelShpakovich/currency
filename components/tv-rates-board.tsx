@@ -1,7 +1,7 @@
 'use client';
 
 import Image from 'next/image';
-import { startTransition, useEffect, useEffectEvent, useMemo, useState } from 'react';
+import { startTransition, useEffect, useEffectEvent, useMemo, useRef, useState } from 'react';
 
 import type { RateCard, RatesSnapshot } from '@/lib/types';
 
@@ -120,7 +120,6 @@ function LogoPlate({ logoUrl, alt }: { logoUrl?: string; alt: string }) {
           fill
           className='object-contain'
           sizes='(max-width: 1024px) 24rem, 32rem'
-          unoptimized
         />
       </div>
     </div>
@@ -189,6 +188,7 @@ export function TvRatesBoard({ initialSnapshot }: TvRatesBoardProps) {
   const [activeIndex, setActiveIndex] = useState(0);
   const [networkIssue, setNetworkIssue] = useState<string | null>(null);
   const [now, setNow] = useState(() => Date.now());
+  const cleanupIntervalRef = useRef<number | null>(null);
 
   const cards = snapshot.cards;
   const currentCard = cards[activeIndex] ?? cards[0];
@@ -249,17 +249,30 @@ export function TvRatesBoard({ initialSnapshot }: TvRatesBoardProps) {
   }, [snapshot.refreshIntervalMs]);
 
   useEffect(() => {
-    const timeoutId = window.setTimeout(
-      () => {
+    // Align the first tick to the next wall-clock minute boundary, then switch
+    // to a regular 60-second interval so the displayed time never drifts.
+    const msUntilNextMinute = 60_000 - (Date.now() % 60_000);
+
+    const timeoutId = window.setTimeout(() => {
+      setNow(Date.now());
+
+      const intervalId = window.setInterval(() => {
         setNow(Date.now());
-      },
-      Math.max(0, 60000 - (now % 60000)),
-    );
+      }, 60_000);
+
+      // Store intervalId on the timeout ref so the cleanup can clear it.
+      // We use a closure variable since useEffect cleanup runs synchronously.
+      cleanupIntervalRef.current = intervalId;
+    }, msUntilNextMinute);
 
     return () => {
       window.clearTimeout(timeoutId);
+      if (cleanupIntervalRef.current !== null) {
+        window.clearInterval(cleanupIntervalRef.current);
+        cleanupIntervalRef.current = null;
+      }
     };
-  }, [now]);
+  }, []);
 
   const status = useMemo(() => buildStatus(snapshot, now, networkIssue), [networkIssue, now, snapshot]);
   const weatherLabel = useMemo(() => buildWeatherLabel(snapshot), [snapshot]);

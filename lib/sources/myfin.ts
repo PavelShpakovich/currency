@@ -1,5 +1,24 @@
 import type { RateCard, SourceLoadResult } from '@/lib/types';
 
+// ---------------------------------------------------------------------------
+// Myfin adapter — HTML scraping
+// ---------------------------------------------------------------------------
+// This adapter fetches the myfin.by USD/BYN Brest page and extracts bank
+// exchange rates by matching known HTML class names and data-attributes.
+//
+// FRAGILITY NOTE: There is no public JSON API, so we parse raw HTML. If
+// myfin.by changes their markup (class renames, DOM restructuring, etc.) this
+// adapter will start returning an empty sections array and throw the error
+// 'Не удалось извлечь банковские курсы Myfin', which surfaces to the UI as a
+// partialFailure warning. The rest of the app (NBRB official rate, weather)
+// continues working normally.
+//
+// When this breaks:
+//   1. Inspect the new HTML structure on https://myfin.by/currency/usd/brest.
+//   2. Update the regex patterns in `parseRateCells` and `parseDefaultRows`.
+//   3. Run `npm run dev` and confirm bank cards appear before deploying.
+// ---------------------------------------------------------------------------
+
 const CITY_LABEL = 'Брест';
 const MYFIN_SOURCE_URL = 'https://myfin.by/currency/usd/brest';
 
