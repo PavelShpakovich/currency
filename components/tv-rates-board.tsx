@@ -170,7 +170,7 @@ function EmptyState({ issues }: { issues: string[] }) {
 function CardDetails({ card }: { card: RateCard }) {
   if (card.kind === 'official') {
     return (
-      <div className='grid w-full max-w-[42rem] min-w-0 gap-6 lg:gap-8'>
+      <div className='grid w-full min-w-0 gap-6 lg:gap-8'>
         <StatBlock label='Официальный курс' value={`${formatRate(card.officialRate)} BYN`} accent />
       </div>
     );
@@ -260,6 +260,7 @@ export function TvRatesBoard({ initialSnapshot }: TvRatesBoardProps) {
 
   const status = useMemo(() => buildStatus(snapshot, now, networkIssue), [networkIssue, now, snapshot]);
   const weatherLabel = useMemo(() => buildWeatherLabel(snapshot), [snapshot]);
+  const hasLogo = Boolean(currentCard.logoUrl);
 
   if (!currentCard) {
     return <EmptyState issues={snapshot.issues} />;
@@ -288,7 +289,12 @@ export function TvRatesBoard({ initialSnapshot }: TvRatesBoardProps) {
         </div>
 
         <div className='flex min-w-0 flex-1 flex-col justify-center gap-8 lg:gap-10'>
-          <div className='grid min-w-0 grid-cols-1 items-center gap-5 lg:grid-cols-[20rem_minmax(0,1fr)] lg:gap-8'>
+          <div
+            className={[
+              'grid min-w-0 grid-cols-1 items-center gap-5 lg:gap-8',
+              hasLogo ? 'lg:grid-cols-[20rem_minmax(0,1fr)]' : 'lg:grid-cols-1',
+            ].join(' ')}
+          >
             <LogoPlate logoUrl={currentCard.logoUrl} alt={currentCard.sourceName} />
 
             <h1 className='min-w-0 max-w-full text-balance break-words text-[clamp(2.6rem,5vw,6rem)] font-black leading-[0.92] tracking-[-0.06em] text-[color:var(--foreground)]'>
