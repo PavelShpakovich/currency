@@ -29,7 +29,7 @@ function formatRate(value: number | undefined) {
   return rateFormatter.format(value);
 }
 
-function formatTimestamp(value: string) {
+function formatTimestamp(value: string | number | Date) {
   return timestampFormatter.format(new Date(value));
 }
 
@@ -249,14 +249,17 @@ export function TvRatesBoard({ initialSnapshot }: TvRatesBoardProps) {
   }, [snapshot.refreshIntervalMs]);
 
   useEffect(() => {
-    const intervalId = window.setInterval(() => {
-      setNow(Date.now());
-    }, 15000);
+    const timeoutId = window.setTimeout(
+      () => {
+        setNow(Date.now());
+      },
+      Math.max(0, 60000 - (now % 60000)),
+    );
 
     return () => {
-      window.clearInterval(intervalId);
+      window.clearTimeout(timeoutId);
     };
-  }, []);
+  }, [now]);
 
   const status = useMemo(() => buildStatus(snapshot, now, networkIssue), [networkIssue, now, snapshot]);
   const weatherLabel = useMemo(() => buildWeatherLabel(snapshot), [snapshot]);
@@ -285,7 +288,7 @@ export function TvRatesBoard({ initialSnapshot }: TvRatesBoardProps) {
           </div>
 
           <p className='shrink-0 text-sm font-semibold tracking-[0.18em] text-[color:var(--muted)] lg:text-base'>
-            {formatTimestamp(currentCard.updatedAt)}
+            {formatTimestamp(now)}
           </p>
         </div>
 
