@@ -292,8 +292,8 @@ export function TvRatesBoard({ initialSnapshot }: TvRatesBoardProps) {
         <div className='flex min-w-0 flex-1 flex-col justify-center gap-8 lg:gap-10'>
           <div
             className={[
-              'grid min-w-0 grid-cols-1 items-center gap-5 lg:gap-8',
-              hasLogo ? 'lg:grid-cols-[20rem_minmax(0,1fr)]' : 'lg:grid-cols-1',
+              'grid min-w-0 grid-cols-1 items-center gap-5 md:gap-8',
+              hasLogo ? 'md:grid-cols-[20rem_minmax(0,1fr)]' : 'md:grid-cols-1',
             ].join(' ')}
           >
             <LogoPlate logoUrl={currentCard.logoUrl} alt={currentCard.sourceName} />
