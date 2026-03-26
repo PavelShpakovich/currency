@@ -34,9 +34,7 @@ function stripHtml(value: string) {
 
 function parseRateCells(rowHtml: string) {
   const rateMatches = Array.from(
-    rowHtml.matchAll(
-      /<td class="currencies-courses__currency-cell [^"]*">\s*<span(?: class="[^"]*")?>([\d.]+)<\/span>/g,
-    ),
+    rowHtml.matchAll(/<td class="currencies-courses__currency-cell [^"]*">\s*<span[^>]*>([\d.]+)<\/span>/g),
   );
 
   if (rateMatches.length < 2) {
@@ -57,12 +55,27 @@ function parseRateCells(rowHtml: string) {
 }
 
 function parseDefaultRows(html: string): MyfinSection[] {
-  const rowPattern =
-    /<tr class="currencies-courses__row-main "[^>]*data-row-type="default"[^>]*data-bank-sef-alias="([^"]+)"[^>]*>([\s\S]*?)<\/tr>/g;
+  const rowPattern = /<tr class="([^"]*currencies-courses__row-main[^"]*)"([^>]*)>([\s\S]*?)<\/tr>/g;
   const parsed: MyfinSection[] = [];
 
   for (const match of html.matchAll(rowPattern)) {
-    const [, bankAlias, rowHtml] = match;
+    const [, rowClassName, rowAttributes, rowHtml] = match;
+
+    if (rowClassName.includes('currencies-courses__row-main--ad')) {
+      continue;
+    }
+
+    if (!rowAttributes.includes('data-row-type="default"')) {
+      continue;
+    }
+
+    const bankAliasMatch = rowAttributes.match(/data-bank-sef-alias="([^"]+)"/);
+
+    if (!bankAliasMatch) {
+      continue;
+    }
+
+    const [, bankAlias] = bankAliasMatch;
     const logoMatch = rowHtml.match(/<img class="load_image"[^>]*alt="([^"]+)"[^>]*data-url-img="([^"]+)"/);
 
     if (!logoMatch) {
