@@ -112,7 +112,7 @@ function LogoPlate({ logoUrl, alt }: { logoUrl?: string; alt: string }) {
   }
 
   return (
-    <div className='metal-panel flex h-28 w-full max-w-[18rem] shrink-0 items-center justify-center overflow-hidden rounded-[2.2rem] px-6 py-4 lg:h-40 lg:max-w-[22rem] lg:px-8'>
+    <div className='metal-panel flex h-28 w-[16rem] shrink-0 items-center justify-center overflow-hidden rounded-[2.2rem] px-6 py-4 lg:h-40 lg:w-[20rem] lg:px-8'>
       <div className='relative h-20 w-full lg:h-28'>
         <Image
           src={logoUrl}
@@ -288,7 +288,7 @@ export function TvRatesBoard({ initialSnapshot }: TvRatesBoardProps) {
         </div>
 
         <div className='flex min-w-0 flex-1 flex-col justify-center gap-8 lg:gap-10'>
-          <div className='flex min-w-0 flex-col items-start gap-5 lg:flex-row lg:items-center lg:gap-8'>
+          <div className='grid min-w-0 grid-cols-1 items-center gap-5 lg:grid-cols-[20rem_minmax(0,1fr)] lg:gap-8'>
             <LogoPlate logoUrl={currentCard.logoUrl} alt={currentCard.sourceName} />
 
             <h1 className='min-w-0 max-w-full text-balance break-words text-[clamp(2.6rem,5vw,6rem)] font-black leading-[0.92] tracking-[-0.06em] text-[color:var(--foreground)]'>
