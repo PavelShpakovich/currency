@@ -22,8 +22,18 @@ export type SourceLoadResult = {
   issues: string[];
 };
 
+export type WeatherSnapshot = {
+  city: string;
+  temperatureC: number;
+  feelsLikeC?: number;
+  windSpeedMs?: number;
+  condition: string;
+  updatedAt: string;
+};
+
 export type RatesSnapshot = {
   cards: RateCard[];
+  weather?: WeatherSnapshot;
   fetchedAt: string;
   refreshIntervalMs: number;
   rotationIntervalMs: number;

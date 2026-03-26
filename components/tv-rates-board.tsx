@@ -33,6 +33,28 @@ function formatTimestamp(value: string) {
   return timestampFormatter.format(new Date(value));
 }
 
+function formatTemperature(value: number | undefined) {
+  if (typeof value !== 'number' || Number.isNaN(value)) {
+    return null;
+  }
+
+  return `${value > 0 ? '+' : ''}${Math.round(value)}°C`;
+}
+
+function buildWeatherLabel(snapshot: RatesSnapshot) {
+  if (!snapshot.weather) {
+    return null;
+  }
+
+  const parts = [snapshot.weather.city, formatTemperature(snapshot.weather.temperatureC), snapshot.weather.condition];
+
+  if (typeof snapshot.weather.windSpeedMs === 'number') {
+    parts.push(`ветер ${snapshot.weather.windSpeedMs.toFixed(1)} м/с`);
+  }
+
+  return parts.filter(Boolean).join(' • ');
+}
+
 function buildStatus(snapshot: RatesSnapshot, now: number, networkIssue: string | null) {
   if (networkIssue) {
     return {
@@ -70,11 +92,11 @@ function buildStatus(snapshot: RatesSnapshot, now: number, networkIssue: string 
 
 function StatBlock({ label, value, accent = false }: { label: string; value: string; accent?: boolean }) {
   return (
-    <div className='metal-panel rounded-[2.1rem] px-8 py-7 lg:px-12 lg:py-10'>
+    <div className='metal-panel min-w-0 overflow-hidden rounded-[2.1rem] px-6 py-6 lg:px-10 lg:py-8'>
       <p className='text-sm font-semibold uppercase tracking-[0.24em] text-[color:var(--muted)] lg:text-lg'>{label}</p>
       <p
         className={[
-          'mt-4 font-mono text-5xl font-bold tracking-tight lg:text-[4.25rem]',
+          'mt-4 min-w-0 overflow-hidden text-[clamp(2.9rem,5.2vw,5.1rem)] leading-[0.9] font-mono font-bold tracking-tight',
           accent ? 'text-[color:var(--accent)]' : 'text-[color:var(--foreground)]',
         ].join(' ')}
       >
@@ -90,7 +112,7 @@ function LogoPlate({ logoUrl, alt }: { logoUrl?: string; alt: string }) {
   }
 
   return (
-    <div className='metal-panel flex h-40 w-full max-w-[24rem] items-center justify-center rounded-[2.2rem] px-8 py-6 lg:h-56 lg:max-w-[32rem] lg:px-12'>
+    <div className='metal-panel flex h-28 w-full max-w-[18rem] shrink-0 items-center justify-center overflow-hidden rounded-[2.2rem] px-6 py-4 lg:h-40 lg:max-w-[22rem] lg:px-8'>
       <div className='relative h-20 w-full lg:h-28'>
         <Image
           src={logoUrl}
@@ -148,14 +170,14 @@ function EmptyState({ issues }: { issues: string[] }) {
 function CardDetails({ card }: { card: RateCard }) {
   if (card.kind === 'official') {
     return (
-      <div className='grid max-w-[42rem] gap-6 lg:gap-8'>
+      <div className='grid w-full max-w-[42rem] min-w-0 gap-6 lg:gap-8'>
         <StatBlock label='Официальный курс' value={`${formatRate(card.officialRate)} BYN`} accent />
       </div>
     );
   }
 
   return (
-    <div className='data-grid w-full gap-6 lg:gap-8'>
+    <div className='data-grid w-full min-w-0 gap-6 lg:gap-8'>
       <StatBlock label='Покупка' value={`${formatRate(card.buyRate)} BYN`} accent />
       <StatBlock label='Продажа' value={`${formatRate(card.sellRate)} BYN`} />
     </div>
@@ -237,28 +259,39 @@ export function TvRatesBoard({ initialSnapshot }: TvRatesBoardProps) {
   }, []);
 
   const status = useMemo(() => buildStatus(snapshot, now, networkIssue), [networkIssue, now, snapshot]);
+  const weatherLabel = useMemo(() => buildWeatherLabel(snapshot), [snapshot]);
 
   if (!currentCard) {
     return <EmptyState issues={snapshot.issues} />;
   }
 
   return (
-    <section className='metal-panel panel-enter flex h-full min-h-[82vh] w-full flex-col justify-between rounded-[2.8rem] px-8 py-8 lg:px-14 lg:py-12'>
+    <section className='metal-panel panel-enter flex h-full min-h-[82vh] w-full flex-col justify-between overflow-hidden rounded-[2.8rem] px-6 py-6 lg:px-10 lg:py-10'>
       <div className='flex flex-1 flex-col gap-10 lg:gap-14'>
-        <div className='flex items-center justify-between gap-6'>
-          <p className='text-sm font-semibold uppercase tracking-[0.28em] text-[color:var(--muted)] lg:text-base'>
-            USD / BYN • Брест
-          </p>
-          <p className='text-sm font-semibold tracking-[0.18em] text-[color:var(--muted)] lg:text-base'>
+        <div className='flex flex-wrap items-start justify-between gap-x-6 gap-y-3'>
+          <div className='flex min-w-0 max-w-full flex-1 flex-col gap-2'>
+            <p className='text-sm font-semibold uppercase tracking-[0.28em] text-[color:var(--muted)] lg:text-base'>
+              USD / BYN • Брест
+            </p>
+            {weatherLabel ? (
+              <div className='metal-panel max-w-full rounded-[1.4rem] px-4 py-3 lg:px-6 lg:py-4'>
+                <p className='max-w-full text-base font-bold leading-snug text-[color:var(--foreground)] wrap-break-word lg:text-2xl'>
+                  {weatherLabel}
+                </p>
+              </div>
+            ) : null}
+          </div>
+
+          <p className='shrink-0 text-sm font-semibold tracking-[0.18em] text-[color:var(--muted)] lg:text-base'>
             {formatTimestamp(currentCard.updatedAt)}
           </p>
         </div>
 
-        <div className='flex flex-1 flex-col justify-center gap-8 lg:gap-10'>
-          <div className='flex min-w-0 flex-col items-start gap-6 lg:flex-row lg:items-center lg:gap-10'>
+        <div className='flex min-w-0 flex-1 flex-col justify-center gap-8 lg:gap-10'>
+          <div className='flex min-w-0 flex-col items-start gap-5 lg:flex-row lg:items-center lg:gap-8'>
             <LogoPlate logoUrl={currentCard.logoUrl} alt={currentCard.sourceName} />
 
-            <h1 className='max-w-[11ch] text-5xl font-black leading-[0.92] tracking-[-0.06em] text-[color:var(--foreground)] lg:text-[6.5rem]'>
+            <h1 className='min-w-0 max-w-full text-balance break-words text-[clamp(2.6rem,5vw,6rem)] font-black leading-[0.92] tracking-[-0.06em] text-[color:var(--foreground)]'>
               {currentCard.headline}
             </h1>
           </div>
@@ -267,7 +300,7 @@ export function TvRatesBoard({ initialSnapshot }: TvRatesBoardProps) {
         </div>
       </div>
 
-      <div className='mt-8 flex flex-col gap-5 lg:mt-10 lg:gap-6'>
+      <div className='mt-8 flex shrink-0 flex-col gap-5 lg:mt-10 lg:gap-6'>
         <SequenceDots activeIndex={activeIndex} total={cards.length} />
         {status.label ? (
           <p className={['text-center text-base font-semibold leading-relaxed lg:text-xl', status.tone].join(' ')}>

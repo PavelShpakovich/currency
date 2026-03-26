@@ -1,5 +1,6 @@
 import { getNbrbCards } from '@/lib/sources/nbrb';
 import { getMyfinCards } from '@/lib/sources/myfin';
+import { getBrestWeather } from '@/lib/sources/weather';
 import type { RatesSnapshot, SourceLoadResult } from '@/lib/types';
 
 const REFRESH_INTERVAL_MS = 60_000;
@@ -30,12 +31,15 @@ function toIssueMessage(sourceName: string, error: unknown) {
 }
 
 export async function getRatesSnapshot(): Promise<RatesSnapshot> {
-  const settled = await Promise.allSettled(
-    adapters.map(async (adapter) => ({
-      name: adapter.name,
-      result: await adapter.load(),
-    })),
-  );
+  const [settled, weatherResult] = await Promise.all([
+    Promise.allSettled(
+      adapters.map(async (adapter) => ({
+        name: adapter.name,
+        result: await adapter.load(),
+      })),
+    ),
+    Promise.allSettled([getBrestWeather()]),
+  ]);
 
   const cards = settled
     .flatMap((entry) => {
@@ -61,8 +65,15 @@ export async function getRatesSnapshot(): Promise<RatesSnapshot> {
     }
   });
 
+  const weather = weatherResult[0]?.status === 'fulfilled' ? weatherResult[0].value : undefined;
+
+  if (weatherResult[0]?.status === 'rejected') {
+    issues.push(toIssueMessage('Погода', weatherResult[0].reason));
+  }
+
   return {
     cards,
+    weather,
     fetchedAt: new Date().toISOString(),
     refreshIntervalMs: REFRESH_INTERVAL_MS,
     rotationIntervalMs: ROTATION_INTERVAL_MS,
