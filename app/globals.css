@@ -12,6 +12,7 @@
   --ok: #0f766e;
   --warn: #b45309;
   --danger: #b42318;
+  color-scheme: light;
 }
 
 @theme inline {
@@ -23,6 +24,8 @@
 
 html {
   min-height: 100%;
+  color-scheme: light;
+  forced-color-adjust: none;
   background:
     radial-gradient(circle at top left, rgba(210, 103, 47, 0.22), transparent 28%),
     radial-gradient(circle at right 18%, rgba(242, 179, 122, 0.24), transparent 20%),
@@ -33,6 +36,9 @@ body {
   background: var(--background);
   color: var(--foreground);
   font-family: var(--font-montserrat), sans-serif;
+  color-scheme: light;
+  forced-color-adjust: none;
+  -webkit-text-size-adjust: 100%;
 }
 
 body::before {

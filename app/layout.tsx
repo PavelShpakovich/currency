@@ -1,4 +1,4 @@
-import type { Metadata } from 'next';
+import type { Metadata, Viewport } from 'next';
 import { Montserrat, Roboto_Mono } from 'next/font/google';
 import './globals.css';
 
@@ -17,6 +17,11 @@ const robotoMono = Roboto_Mono({
 export const metadata: Metadata = {
   title: 'Курсы валют BYN',
   description: 'TV-first экран с курсом доллара к белорусскому рублю и банковскими курсами.',
+};
+
+export const viewport: Viewport = {
+  colorScheme: 'light',
+  themeColor: '#f0eadc',
 };
 
 export default function RootLayout({
