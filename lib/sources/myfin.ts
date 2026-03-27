@@ -32,6 +32,29 @@ type MyfinSection = {
   branchCount: number;
 };
 
+const LOCAL_BANK_LOGO_PATHS: Record<string, string> = {
+  alfabank: '/banks/alfabank.svg',
+  'bank-vtb': '/banks/bank-vtb.svg',
+  belagroprombank: '/banks/belagroprombank.svg',
+  belarusbank: '/banks/belarusbank.svg',
+  belgazprombank: '/banks/belgazprombank.svg',
+  belinvestbank: '/banks/belinvestbank.svg',
+  belswissbank: '/banks/belswissbank.svg',
+  bnbank: '/banks/bnbank.svg',
+  'bps-sberbank': '/banks/bps-sberbank.svg',
+  btabank: '/banks/btabank.svg',
+  bvebank: '/banks/bvebank.svg',
+  dabrabyt: '/banks/dabrabyt.svg',
+  mtbank: '/banks/mtbank.svg',
+  paritetbank: '/banks/paritetbank.svg',
+  priorbank: '/banks/priorbank.svg',
+  reshenie: '/banks/reshenie.svg',
+  'rrb-bank': '/banks/rrb-bank.svg',
+  statusbank: '/banks/statusbank.svg',
+  technobank: '/banks/technobank.svg',
+  zepterbank: '/banks/zepterbank.svg',
+};
+
 function normalizeWhitespace(value: string) {
   return value.replace(/\s+/g, ' ').trim();
 }
@@ -49,6 +72,10 @@ function escapeRegExp(value: string) {
 
 function stripHtml(value: string) {
   return normalizeWhitespace(value.replace(/<[^>]+>/g, ' ').replace(/&nbsp;/g, ' '));
+}
+
+function getLocalBankLogoPath(bankAlias: string) {
+  return LOCAL_BANK_LOGO_PATHS[bankAlias];
 }
 
 function parseRateCells(rowHtml: string) {
@@ -101,7 +128,7 @@ function parseDefaultRows(html: string): MyfinSection[] {
       continue;
     }
 
-    const [, altName, rawLogoUrl] = logoMatch;
+    const [, altName] = logoMatch;
     const nameMatch = rowHtml.match(
       /<span class="bank-logo bank-logo--s mr-5">[\s\S]*?<\/span>([\s\S]*?)<\/span><\/td>/,
     );
@@ -122,7 +149,7 @@ function parseDefaultRows(html: string): MyfinSection[] {
       id: slugify(bankName),
       bankAlias,
       bankName,
-      logoUrl: rawLogoUrl.startsWith('http') ? rawLogoUrl : `https://myfin.by${rawLogoUrl}`,
+      logoUrl: getLocalBankLogoPath(bankAlias),
       buyRate: rates.buyRate,
       sellRate: rates.sellRate,
       branchCount,
