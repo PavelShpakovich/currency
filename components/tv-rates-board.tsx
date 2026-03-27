@@ -173,8 +173,8 @@ function TrendIcon({ trend }: { trend: RateTrend }) {
       className={[
         'inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full border text-base',
         isUp
-          ? 'border-[color:color-mix(in srgb,var(--danger) 28%,transparent)] text-[color:var(--danger)]'
-          : 'border-[color:color-mix(in srgb,var(--ok) 28%,transparent)] text-[color:var(--ok)]',
+          ? 'border-[color:color-mix(in srgb,var(--ok) 28%,transparent)] text-(--ok)'
+          : 'border-[color:color-mix(in srgb,var(--danger) 28%,transparent)] text-(--danger)',
       ].join(' ')}
       title={isUp ? 'Курс вырос' : 'Курс снизился'}
     >
