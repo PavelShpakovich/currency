@@ -9,6 +9,14 @@ type TvRatesBoardProps = {
   initialSnapshot: RatesSnapshot;
 };
 
+type RateTrend = 'up' | 'down';
+
+type CardTrend = {
+  officialRate?: RateTrend;
+  buyRate?: RateTrend;
+  sellRate?: RateTrend;
+};
+
 const rateFormatter = new Intl.NumberFormat('ru-RU', {
   minimumFractionDigits: 4,
   maximumFractionDigits: 4,
@@ -90,18 +98,83 @@ function buildStatus(snapshot: RatesSnapshot, now: number, networkIssue: string 
   };
 }
 
-function StatBlock({ label, value, accent = false }: { label: string; value: string; accent?: boolean }) {
+function resolveRateTrend(currentValue: number | undefined, previousValue: number | undefined): RateTrend | undefined {
+  if (
+    typeof currentValue !== 'number' ||
+    Number.isNaN(currentValue) ||
+    typeof previousValue !== 'number' ||
+    Number.isNaN(previousValue) ||
+    currentValue === previousValue
+  ) {
+    return undefined;
+  }
+
+  return currentValue > previousValue ? 'up' : 'down';
+}
+
+function buildCardTrend(card: RateCard, previousCard: RateCard | undefined): CardTrend {
+  if (!previousCard) {
+    return {};
+  }
+
+  return {
+    officialRate: resolveRateTrend(card.officialRate, previousCard.officialRate),
+    buyRate: resolveRateTrend(card.buyRate, previousCard.buyRate),
+    sellRate: resolveRateTrend(card.sellRate, previousCard.sellRate),
+  };
+}
+
+function TrendIcon({ trend }: { trend: RateTrend }) {
+  const isUp = trend === 'up';
+
+  return (
+    <span
+      aria-label={isUp ? 'Курс вырос' : 'Курс снизился'}
+      className={[
+        'inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full border text-base',
+        isUp
+          ? 'border-[color:color-mix(in srgb,var(--danger) 28%,transparent)] text-[color:var(--danger)]'
+          : 'border-[color:color-mix(in srgb,var(--ok) 28%,transparent)] text-[color:var(--ok)]',
+      ].join(' ')}
+      title={isUp ? 'Курс вырос' : 'Курс снизился'}
+    >
+      <svg
+        aria-hidden='true'
+        viewBox='0 0 20 20'
+        className={['h-5 w-5', isUp ? '' : 'rotate-180'].join(' ')}
+        fill='currentColor'
+      >
+        <path d='M10 3.5 16.5 12H12v4.5H8V12H3.5L10 3.5Z' />
+      </svg>
+    </span>
+  );
+}
+
+function StatBlock({
+  label,
+  value,
+  accent = false,
+  trend,
+}: {
+  label: string;
+  value: string;
+  accent?: boolean;
+  trend?: RateTrend;
+}) {
   return (
     <div className='metal-panel min-w-0 overflow-hidden rounded-[2.1rem] px-6 py-6 lg:px-10 lg:py-8'>
       <p className='text-sm font-semibold uppercase tracking-[0.24em] text-[color:var(--muted)] lg:text-lg'>{label}</p>
-      <p
-        className={[
-          'mt-4 min-w-0 overflow-hidden text-[clamp(2.9rem,5.2vw,5.1rem)] leading-[0.9] font-mono font-bold tracking-tight',
-          accent ? 'text-[color:var(--accent)]' : 'text-[color:var(--foreground)]',
-        ].join(' ')}
-      >
-        {value}
-      </p>
+      <div className='mt-4 flex min-w-0 items-center gap-4'>
+        <p
+          className={[
+            'min-w-0 overflow-hidden text-[clamp(2.9rem,5.2vw,5.1rem)] leading-[0.9] font-mono font-bold tracking-tight',
+            accent ? 'text-[color:var(--accent)]' : 'text-[color:var(--foreground)]',
+          ].join(' ')}
+        >
+          {value}
+        </p>
+        {trend ? <TrendIcon trend={trend} /> : null}
+      </div>
     </div>
   );
 }
@@ -114,13 +187,7 @@ function LogoPlate({ logoUrl, alt }: { logoUrl?: string; alt: string }) {
   return (
     <div className='metal-panel flex h-28 w-[16rem] shrink-0 items-center justify-center overflow-hidden rounded-[2.2rem] px-6 py-4 lg:h-40 lg:w-[20rem] lg:px-8'>
       <div className='relative h-20 w-full lg:h-28'>
-        <Image
-          src={logoUrl}
-          alt={alt}
-          fill
-          className='object-contain'
-          sizes='(max-width: 1024px) 24rem, 32rem'
-        />
+        <Image src={logoUrl} alt={alt} fill className='object-contain' sizes='(max-width: 1024px) 24rem, 32rem' />
       </div>
     </div>
   );
@@ -166,25 +233,31 @@ function EmptyState({ issues }: { issues: string[] }) {
   );
 }
 
-function CardDetails({ card }: { card: RateCard }) {
+function CardDetails({ card, trend }: { card: RateCard; trend: CardTrend }) {
   if (card.kind === 'official') {
     return (
       <div className='grid w-full min-w-0 gap-6 lg:gap-8'>
-        <StatBlock label='Официальный курс' value={`${formatRate(card.officialRate)} BYN`} accent />
+        <StatBlock
+          label='Официальный курс'
+          value={`${formatRate(card.officialRate)} BYN`}
+          accent
+          trend={trend.officialRate}
+        />
       </div>
     );
   }
 
   return (
     <div className='data-grid w-full min-w-0 gap-6 lg:gap-8'>
-      <StatBlock label='Покупка' value={`${formatRate(card.buyRate)} BYN`} accent />
-      <StatBlock label='Продажа' value={`${formatRate(card.sellRate)} BYN`} />
+      <StatBlock label='Покупка' value={`${formatRate(card.buyRate)} BYN`} accent trend={trend.buyRate} />
+      <StatBlock label='Продажа' value={`${formatRate(card.sellRate)} BYN`} trend={trend.sellRate} />
     </div>
   );
 }
 
 export function TvRatesBoard({ initialSnapshot }: TvRatesBoardProps) {
   const [snapshot, setSnapshot] = useState(initialSnapshot);
+  const [previousSnapshot, setPreviousSnapshot] = useState<RatesSnapshot | null>(null);
   const [activeIndex, setActiveIndex] = useState(0);
   const [networkIssue, setNetworkIssue] = useState<string | null>(null);
   const [now, setNow] = useState(() => Date.now());
@@ -206,6 +279,7 @@ export function TvRatesBoard({ initialSnapshot }: TvRatesBoardProps) {
       const nextSnapshot = (await response.json()) as RatesSnapshot;
 
       startTransition(() => {
+        setPreviousSnapshot(snapshot);
         setSnapshot(nextSnapshot);
         setNetworkIssue(null);
       });
@@ -276,6 +350,14 @@ export function TvRatesBoard({ initialSnapshot }: TvRatesBoardProps) {
 
   const status = useMemo(() => buildStatus(snapshot, now, networkIssue), [networkIssue, now, snapshot]);
   const weatherLabel = useMemo(() => buildWeatherLabel(snapshot), [snapshot]);
+  const previousCard = useMemo(
+    () => previousSnapshot?.cards.find((card) => card.id === currentCard?.id),
+    [currentCard?.id, previousSnapshot],
+  );
+  const currentCardTrend = useMemo(
+    () => (currentCard ? buildCardTrend(currentCard, previousCard) : {}),
+    [currentCard, previousCard],
+  );
 
   if (!currentCard) {
     return <EmptyState issues={snapshot.issues} />;
@@ -319,7 +401,7 @@ export function TvRatesBoard({ initialSnapshot }: TvRatesBoardProps) {
             </h1>
           </div>
 
-          <CardDetails card={currentCard} />
+          <CardDetails card={currentCard} trend={currentCardTrend} />
         </div>
       </div>
 
