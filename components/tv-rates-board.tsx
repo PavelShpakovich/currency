@@ -17,6 +17,8 @@ type CardTrend = {
   sellRate?: RateTrend;
 };
 
+const SNAPSHOT_STORAGE_KEY = 'currency:last-rates-snapshot';
+
 const rateFormatter = new Intl.NumberFormat('ru-RU', {
   minimumFractionDigits: 4,
   maximumFractionDigits: 4,
@@ -96,6 +98,44 @@ function buildStatus(snapshot: RatesSnapshot, now: number, networkIssue: string 
     tone: 'text-[color:var(--ok)]',
     label: null,
   };
+}
+
+function isSnapshotNewer(candidate: RatesSnapshot, baseline: RatesSnapshot | null) {
+  if (!baseline) {
+    return true;
+  }
+
+  return Date.parse(candidate.fetchedAt) > Date.parse(baseline.fetchedAt);
+}
+
+function readStoredSnapshot() {
+  if (typeof window === 'undefined') {
+    return null;
+  }
+
+  try {
+    const storedValue = window.localStorage.getItem(SNAPSHOT_STORAGE_KEY);
+
+    if (!storedValue) {
+      return null;
+    }
+
+    return JSON.parse(storedValue) as RatesSnapshot;
+  } catch {
+    return null;
+  }
+}
+
+function writeStoredSnapshot(snapshot: RatesSnapshot) {
+  if (typeof window === 'undefined') {
+    return;
+  }
+
+  try {
+    window.localStorage.setItem(SNAPSHOT_STORAGE_KEY, JSON.stringify(snapshot));
+  } catch {
+    // Ignore storage write failures; the live snapshot still works.
+  }
 }
 
 function resolveRateTrend(currentValue: number | undefined, previousValue: number | undefined): RateTrend | undefined {
@@ -284,9 +324,37 @@ export function TvRatesBoard({ initialSnapshot }: TvRatesBoardProps) {
         setNetworkIssue(null);
       });
     } catch {
-      setNetworkIssue('Не удалось обновить данные. Показываем последний снимок.');
+      const storedSnapshot = readStoredSnapshot();
+
+      startTransition(() => {
+        if (storedSnapshot && isSnapshotNewer(storedSnapshot, snapshot)) {
+          setPreviousSnapshot(snapshot);
+          setSnapshot(storedSnapshot);
+        }
+
+        setNetworkIssue(
+          storedSnapshot
+            ? 'Нет сети. Показываем ранее сохраненные данные и обновим экран после восстановления соединения.'
+            : 'Не удалось обновить данные. Показываем последний снимок.',
+        );
+      });
     }
   });
+
+  useEffect(() => {
+    const storedSnapshot = readStoredSnapshot();
+
+    if (storedSnapshot && isSnapshotNewer(storedSnapshot, initialSnapshot)) {
+      startTransition(() => {
+        setPreviousSnapshot(initialSnapshot);
+        setSnapshot(storedSnapshot);
+      });
+    }
+  }, [initialSnapshot]);
+
+  useEffect(() => {
+    writeStoredSnapshot(snapshot);
+  }, [snapshot]);
 
   useEffect(() => {
     if (cards.length <= 1) {
@@ -321,6 +389,24 @@ export function TvRatesBoard({ initialSnapshot }: TvRatesBoardProps) {
       window.clearInterval(intervalId);
     };
   }, [snapshot.refreshIntervalMs]);
+
+  useEffect(() => {
+    const handleOnline = () => {
+      void refreshSnapshot();
+    };
+
+    const handleOffline = () => {
+      setNetworkIssue('Нет сети. Показываем ранее сохраненные данные и обновим экран после восстановления соединения.');
+    };
+
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, []);
 
   useEffect(() => {
     // Align the first tick to the next wall-clock minute boundary, then switch
