@@ -453,7 +453,7 @@ export function TvRatesBoard({ initialSnapshot }: TvRatesBoardProps) {
 
   return (
     <section className='metal-panel panel-enter flex h-full min-h-[82vh] w-full flex-col justify-between overflow-hidden rounded-[2.8rem] px-6 py-6 lg:px-10 lg:py-10'>
-      <div className='flex flex-1 flex-col gap-10 lg:gap-14'>
+      <div className='flex flex-1 flex-col gap-8 lg:gap-12'>
         <div className='flex flex-wrap items-start justify-between gap-x-6 gap-y-3'>
           <div className='flex min-w-0 max-w-full flex-1 flex-col gap-2'>
             <p className='text-sm font-semibold uppercase tracking-[0.28em] text-[color:var(--muted)] lg:text-base'>
@@ -473,7 +473,7 @@ export function TvRatesBoard({ initialSnapshot }: TvRatesBoardProps) {
           </p>
         </div>
 
-        <div className='flex min-w-0 flex-1 flex-col justify-center gap-8 lg:gap-10'>
+        <div className='flex min-w-0 flex-1 flex-col justify-center gap-6 lg:gap-8'>
           <div
             className={[
               'grid min-w-0 grid-cols-1 items-center gap-5 md:gap-8',
@@ -491,7 +491,7 @@ export function TvRatesBoard({ initialSnapshot }: TvRatesBoardProps) {
         </div>
       </div>
 
-      <div className='mt-8 flex shrink-0 flex-col gap-5 lg:mt-10 lg:gap-6'>
+      <div className='mt-6 flex shrink-0 flex-col gap-4 lg:mt-8 lg:gap-5'>
         <SequenceDots activeIndex={activeIndex} total={cards.length} />
         {status.label ? (
           <p className={['text-center text-base font-semibold leading-relaxed lg:text-xl', status.tone].join(' ')}>
