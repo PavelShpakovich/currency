@@ -17,6 +17,8 @@ type CardTrend = {
   sellRate?: RateTrend;
 };
 
+type PreviousCardsById = Record<string, RateCard>;
+
 const SNAPSHOT_STORAGE_KEY = 'currency:last-rates-snapshot';
 
 const rateFormatter = new Intl.NumberFormat('ru-RU', {
@@ -46,10 +48,18 @@ function formatTimestamp(value: string | number | Date) {
   return timestampFormatter.format(new Date(value));
 }
 
-function getInitialNow(snapshot: RatesSnapshot) {
+function getSnapshotTimestamp(snapshot: Pick<RatesSnapshot, 'fetchedAt'> | null) {
+  if (!snapshot) {
+    return 0;
+  }
+
   const parsedTimestamp = Date.parse(snapshot.fetchedAt);
 
   return Number.isNaN(parsedTimestamp) ? 0 : parsedTimestamp;
+}
+
+function getInitialNow(snapshot: RatesSnapshot) {
+  return getSnapshotTimestamp(snapshot);
 }
 
 function formatTemperature(value: number | undefined) {
@@ -72,6 +82,16 @@ function buildWeatherLabel(snapshot: RatesSnapshot) {
   }
 
   return parts.filter(Boolean).join(' • ');
+}
+
+function buildPartialFailureLabel(snapshot: RatesSnapshot) {
+  const hasWeatherIssue = snapshot.issues.some((issue) => issue.startsWith('Погода:'));
+
+  if (hasWeatherIssue) {
+    return 'Погода не загрузилась. Экран показывает курсы без погодного блока.';
+  }
+
+  return 'Часть источников недоступна, экран показывает то, что удалось получить.';
 }
 
 function buildStatus(snapshot: RatesSnapshot, now: number, networkIssue: string | null) {
@@ -99,7 +119,7 @@ function buildStatus(snapshot: RatesSnapshot, now: number, networkIssue: string 
   if (snapshot.partialFailure) {
     return {
       tone: 'text-[color:var(--warn)]',
-      label: 'Часть источников недоступна, экран показывает то, что удалось получить.',
+      label: buildPartialFailureLabel(snapshot),
     };
   }
 
@@ -110,11 +130,21 @@ function buildStatus(snapshot: RatesSnapshot, now: number, networkIssue: string 
 }
 
 function isSnapshotNewer(candidate: RatesSnapshot, baseline: RatesSnapshot | null) {
-  if (!baseline) {
-    return true;
+  return getSnapshotTimestamp(candidate) > getSnapshotTimestamp(baseline);
+}
+
+function mergePreviousCards(previousCardsById: PreviousCardsById, cards: RateCard[]) {
+  if (!cards.length) {
+    return previousCardsById;
   }
 
-  return Date.parse(candidate.fetchedAt) > Date.parse(baseline.fetchedAt);
+  return cards.reduce<PreviousCardsById>(
+    (nextPreviousCardsById, card) => {
+      nextPreviousCardsById[card.id] = card;
+      return nextPreviousCardsById;
+    },
+    { ...previousCardsById },
+  );
 }
 
 function readStoredSnapshot() {
@@ -306,7 +336,7 @@ function CardDetails({ card, trend }: { card: RateCard; trend: CardTrend }) {
 
 export function TvRatesBoard({ initialSnapshot }: TvRatesBoardProps) {
   const [snapshot, setSnapshot] = useState(initialSnapshot);
-  const [previousSnapshot, setPreviousSnapshot] = useState<RatesSnapshot | null>(null);
+  const [previousCardsById, setPreviousCardsById] = useState<PreviousCardsById>({});
   const [activeIndex, setActiveIndex] = useState(0);
   const [networkIssue, setNetworkIssue] = useState<string | null>(null);
   const [now, setNow] = useState(() => getInitialNow(initialSnapshot));
@@ -328,8 +358,13 @@ export function TvRatesBoard({ initialSnapshot }: TvRatesBoardProps) {
       const nextSnapshot = (await response.json()) as RatesSnapshot;
 
       startTransition(() => {
-        setPreviousSnapshot(snapshot);
-        setSnapshot(nextSnapshot);
+        if (isSnapshotNewer(nextSnapshot, snapshot)) {
+          setPreviousCardsById((currentPreviousCardsById) =>
+            mergePreviousCards(currentPreviousCardsById, snapshot.cards),
+          );
+          setSnapshot(nextSnapshot);
+        }
+
         setNetworkIssue(null);
       });
     } catch {
@@ -337,7 +372,9 @@ export function TvRatesBoard({ initialSnapshot }: TvRatesBoardProps) {
 
       startTransition(() => {
         if (storedSnapshot && isSnapshotNewer(storedSnapshot, snapshot)) {
-          setPreviousSnapshot(snapshot);
+          setPreviousCardsById((currentPreviousCardsById) =>
+            mergePreviousCards(currentPreviousCardsById, snapshot.cards),
+          );
           setSnapshot(storedSnapshot);
         }
 
@@ -355,7 +392,9 @@ export function TvRatesBoard({ initialSnapshot }: TvRatesBoardProps) {
 
     if (storedSnapshot && isSnapshotNewer(storedSnapshot, initialSnapshot)) {
       startTransition(() => {
-        setPreviousSnapshot(initialSnapshot);
+        setPreviousCardsById((currentPreviousCardsById) =>
+          mergePreviousCards(currentPreviousCardsById, initialSnapshot.cards),
+        );
         setSnapshot(storedSnapshot);
       });
     }
@@ -447,10 +486,7 @@ export function TvRatesBoard({ initialSnapshot }: TvRatesBoardProps) {
 
   const status = useMemo(() => buildStatus(snapshot, now, networkIssue), [networkIssue, now, snapshot]);
   const weatherLabel = useMemo(() => buildWeatherLabel(snapshot), [snapshot]);
-  const previousCard = useMemo(
-    () => previousSnapshot?.cards.find((card) => card.id === currentCard?.id),
-    [currentCard?.id, previousSnapshot],
-  );
+  const previousCard = currentCard ? previousCardsById[currentCard.id] : undefined;
   const currentCardTrend = useMemo(
     () => (currentCard ? buildCardTrend(currentCard, previousCard) : {}),
     [currentCard, previousCard],
