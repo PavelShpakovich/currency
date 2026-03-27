@@ -2,7 +2,16 @@ import type { WeatherSnapshot } from '@/lib/types';
 
 const BREST_LATITUDE = 52.0976;
 const BREST_LONGITUDE = 23.7341;
+const WEATHER_REFRESH_INTERVAL_MS = 20 * 60_000;
 const OPEN_METEO_URL = `https://api.open-meteo.com/v1/forecast?latitude=${BREST_LATITUDE}&longitude=${BREST_LONGITUDE}&current=temperature_2m,apparent_temperature,weather_code,wind_speed_10m&wind_speed_unit=ms&timezone=auto`;
+
+type WeatherCacheEntry = {
+  snapshot: WeatherSnapshot;
+  expiresAt: number;
+};
+
+let weatherCache: WeatherCacheEntry | null = null;
+let weatherInFlight: Promise<WeatherSnapshot> | null = null;
 
 function describeWeather(code: number) {
   const descriptions: Record<number, string> = {
@@ -49,7 +58,7 @@ type OpenMeteoResponse = {
   };
 };
 
-export async function getBrestWeather(): Promise<WeatherSnapshot> {
+async function fetchFreshWeather(): Promise<WeatherSnapshot> {
   const response = await fetch(OPEN_METEO_URL, {
     cache: 'no-store',
   });
@@ -73,4 +82,32 @@ export async function getBrestWeather(): Promise<WeatherSnapshot> {
     condition: describeWeather(current.weather_code),
     updatedAt: current.time ?? new Date().toISOString(),
   };
+}
+
+export async function getBrestWeather(): Promise<WeatherSnapshot> {
+  const now = Date.now();
+
+  if (weatherCache !== null && now < weatherCache.expiresAt) {
+    return weatherCache.snapshot;
+  }
+
+  if (weatherInFlight !== null) {
+    return weatherInFlight;
+  }
+
+  weatherInFlight = fetchFreshWeather()
+    .then((snapshot) => {
+      weatherCache = {
+        snapshot,
+        expiresAt: Date.now() + WEATHER_REFRESH_INTERVAL_MS,
+      };
+      weatherInFlight = null;
+      return snapshot;
+    })
+    .catch((error: unknown) => {
+      weatherInFlight = null;
+      throw error;
+    });
+
+  return weatherInFlight;
 }
