@@ -24,7 +24,10 @@ const rateFormatter = new Intl.NumberFormat('ru-RU', {
   maximumFractionDigits: 4,
 });
 
+const DISPLAY_TIME_ZONE = 'Europe/Minsk';
+
 const timestampFormatter = new Intl.DateTimeFormat('ru-RU', {
+  timeZone: DISPLAY_TIME_ZONE,
   day: '2-digit',
   month: '2-digit',
   hour: '2-digit',
@@ -41,6 +44,12 @@ function formatRate(value: number | undefined) {
 
 function formatTimestamp(value: string | number | Date) {
   return timestampFormatter.format(new Date(value));
+}
+
+function getInitialNow(snapshot: RatesSnapshot) {
+  const parsedTimestamp = Date.parse(snapshot.fetchedAt);
+
+  return Number.isNaN(parsedTimestamp) ? 0 : parsedTimestamp;
 }
 
 function formatTemperature(value: number | undefined) {
@@ -300,7 +309,7 @@ export function TvRatesBoard({ initialSnapshot }: TvRatesBoardProps) {
   const [previousSnapshot, setPreviousSnapshot] = useState<RatesSnapshot | null>(null);
   const [activeIndex, setActiveIndex] = useState(0);
   const [networkIssue, setNetworkIssue] = useState<string | null>(null);
-  const [now, setNow] = useState(() => Date.now());
+  const [now, setNow] = useState(() => getInitialNow(initialSnapshot));
   const cleanupIntervalRef = useRef<number | null>(null);
 
   const cards = snapshot.cards;
@@ -409,6 +418,8 @@ export function TvRatesBoard({ initialSnapshot }: TvRatesBoardProps) {
   }, []);
 
   useEffect(() => {
+    setNow(Date.now());
+
     // Align the first tick to the next wall-clock minute boundary, then switch
     // to a regular 60-second interval so the displayed time never drifts.
     const msUntilNextMinute = 60_000 - (Date.now() % 60_000);
