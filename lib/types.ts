@@ -11,8 +11,11 @@ export type RateCard = {
   updatedAt: string;
   logoUrl?: string;
   officialRate?: number;
+  previousOfficialRate?: number;
   buyRate?: number;
+  previousBuyRate?: number;
   sellRate?: number;
+  previousSellRate?: number;
   location?: string;
   note?: string;
 };

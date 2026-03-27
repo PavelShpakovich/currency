@@ -17,9 +17,10 @@ type CardTrend = {
   sellRate?: RateTrend;
 };
 
-type PreviousCardsById = Record<string, RateCard>;
+type ComparisonCardsById = Record<string, RateCard>;
 
 const SNAPSHOT_STORAGE_KEY = 'currency:last-rates-snapshot';
+const SNAPSHOT_HISTORY_STORAGE_KEY = 'currency:daily-rate-snapshots';
 
 const rateFormatter = new Intl.NumberFormat('ru-RU', {
   minimumFractionDigits: 4,
@@ -34,6 +35,13 @@ const timestampFormatter = new Intl.DateTimeFormat('ru-RU', {
   month: '2-digit',
   hour: '2-digit',
   minute: '2-digit',
+});
+
+const dateKeyFormatter = new Intl.DateTimeFormat('en-CA', {
+  timeZone: DISPLAY_TIME_ZONE,
+  year: 'numeric',
+  month: '2-digit',
+  day: '2-digit',
 });
 
 function formatRate(value: number | undefined) {
@@ -133,18 +141,11 @@ function isSnapshotNewer(candidate: RatesSnapshot, baseline: RatesSnapshot | nul
   return getSnapshotTimestamp(candidate) > getSnapshotTimestamp(baseline);
 }
 
-function mergePreviousCards(previousCardsById: PreviousCardsById, cards: RateCard[]) {
-  if (!cards.length) {
-    return previousCardsById;
-  }
-
-  return cards.reduce<PreviousCardsById>(
-    (nextPreviousCardsById, card) => {
-      nextPreviousCardsById[card.id] = card;
-      return nextPreviousCardsById;
-    },
-    { ...previousCardsById },
-  );
+function buildCardsById(cards: RateCard[]) {
+  return cards.reduce<ComparisonCardsById>((cardsById, card) => {
+    cardsById[card.id] = card;
+    return cardsById;
+  }, {});
 }
 
 function readStoredSnapshot() {
@@ -165,16 +166,122 @@ function readStoredSnapshot() {
   }
 }
 
+function readStoredSnapshotHistory() {
+  if (typeof window === 'undefined') {
+    return {} as Record<string, RatesSnapshot>;
+  }
+
+  try {
+    const storedValue = window.localStorage.getItem(SNAPSHOT_HISTORY_STORAGE_KEY);
+
+    if (!storedValue) {
+      return {} as Record<string, RatesSnapshot>;
+    }
+
+    const parsedValue = JSON.parse(storedValue);
+
+    if (!parsedValue || typeof parsedValue !== 'object') {
+      return {} as Record<string, RatesSnapshot>;
+    }
+
+    return parsedValue as Record<string, RatesSnapshot>;
+  } catch {
+    return {} as Record<string, RatesSnapshot>;
+  }
+}
+
+function getDateKey(value: string | number | Date) {
+  const parsedDate = new Date(value);
+
+  if (Number.isNaN(parsedDate.valueOf())) {
+    return null;
+  }
+
+  const parts = dateKeyFormatter.formatToParts(parsedDate);
+  const year = parts.find((part) => part.type === 'year')?.value;
+  const month = parts.find((part) => part.type === 'month')?.value;
+  const day = parts.find((part) => part.type === 'day')?.value;
+
+  if (!year || !month || !day) {
+    return null;
+  }
+
+  return `${year}-${month}-${day}`;
+}
+
+function getYesterdayDateKey(value: string | number | Date) {
+  const currentDateKey = getDateKey(value);
+
+  if (!currentDateKey) {
+    return null;
+  }
+
+  const [year, month, day] = currentDateKey.split('-').map(Number);
+  const currentMidnightUtc = new Date(Date.UTC(year, month - 1, day));
+  currentMidnightUtc.setUTCDate(currentMidnightUtc.getUTCDate() - 1);
+
+  return currentMidnightUtc.toISOString().slice(0, 10);
+}
+
+function pruneSnapshotHistory(history: Record<string, RatesSnapshot>) {
+  const recentKeys = Object.keys(history).sort().slice(-3);
+
+  return recentKeys.reduce<Record<string, RatesSnapshot>>((nextHistory, key) => {
+    nextHistory[key] = history[key];
+    return nextHistory;
+  }, {});
+}
+
 function writeStoredSnapshot(snapshot: RatesSnapshot) {
   if (typeof window === 'undefined') {
     return;
   }
 
   try {
+    const dateKey = getDateKey(snapshot.fetchedAt);
+    const legacySnapshot = readStoredSnapshot();
+    const nextHistory = readStoredSnapshotHistory();
+
+    if (legacySnapshot) {
+      const legacyDateKey = getDateKey(legacySnapshot.fetchedAt);
+
+      if (legacyDateKey && !nextHistory[legacyDateKey]) {
+        nextHistory[legacyDateKey] = legacySnapshot;
+      }
+    }
+
+    if (dateKey) {
+      nextHistory[dateKey] = snapshot;
+      window.localStorage.setItem(SNAPSHOT_HISTORY_STORAGE_KEY, JSON.stringify(pruneSnapshotHistory(nextHistory)));
+    }
+
     window.localStorage.setItem(SNAPSHOT_STORAGE_KEY, JSON.stringify(snapshot));
   } catch {
     // Ignore storage write failures; the live snapshot still works.
   }
+}
+
+function readYesterdaySnapshot(snapshot: RatesSnapshot) {
+  const yesterdayDateKey = getYesterdayDateKey(snapshot.fetchedAt);
+
+  if (!yesterdayDateKey) {
+    return null;
+  }
+
+  const history = readStoredSnapshotHistory();
+  const historySnapshot = history[yesterdayDateKey];
+
+  if (historySnapshot) {
+    return historySnapshot;
+  }
+
+  const legacySnapshot = readStoredSnapshot();
+
+  if (legacySnapshot && getDateKey(legacySnapshot.fetchedAt) === yesterdayDateKey) {
+    return legacySnapshot;
+  }
+
+  return null;
 }
 
 function resolveRateTrend(currentValue: number | undefined, previousValue: number | undefined): RateTrend | undefined {
@@ -192,14 +299,10 @@ function resolveRateTrend(currentValue: number | undefined, previousValue: numbe
 }
 
 function buildCardTrend(card: RateCard, previousCard: RateCard | undefined): CardTrend {
-  if (!previousCard) {
-    return {};
-  }
-
   return {
-    officialRate: resolveRateTrend(card.officialRate, previousCard.officialRate),
-    buyRate: resolveRateTrend(card.buyRate, previousCard.buyRate),
-    sellRate: resolveRateTrend(card.sellRate, previousCard.sellRate),
+    officialRate: resolveRateTrend(card.officialRate, card.previousOfficialRate ?? previousCard?.officialRate),
+    buyRate: resolveRateTrend(card.buyRate, card.previousBuyRate ?? previousCard?.buyRate),
+    sellRate: resolveRateTrend(card.sellRate, card.previousSellRate ?? previousCard?.sellRate),
   };
 }
 
@@ -336,7 +439,7 @@ function CardDetails({ card, trend }: { card: RateCard; trend: CardTrend }) {
 
 export function TvRatesBoard({ initialSnapshot }: TvRatesBoardProps) {
   const [snapshot, setSnapshot] = useState(initialSnapshot);
-  const [previousCardsById, setPreviousCardsById] = useState<PreviousCardsById>({});
+  const [comparisonCardsById, setComparisonCardsById] = useState<ComparisonCardsById>({});
   const [activeIndex, setActiveIndex] = useState(0);
   const [networkIssue, setNetworkIssue] = useState<string | null>(null);
   const [now, setNow] = useState(() => getInitialNow(initialSnapshot));
@@ -359,9 +462,6 @@ export function TvRatesBoard({ initialSnapshot }: TvRatesBoardProps) {
 
       startTransition(() => {
         if (isSnapshotNewer(nextSnapshot, snapshot)) {
-          setPreviousCardsById((currentPreviousCardsById) =>
-            mergePreviousCards(currentPreviousCardsById, snapshot.cards),
-          );
           setSnapshot(nextSnapshot);
         }
 
@@ -372,9 +472,6 @@ export function TvRatesBoard({ initialSnapshot }: TvRatesBoardProps) {
 
       startTransition(() => {
         if (storedSnapshot && isSnapshotNewer(storedSnapshot, snapshot)) {
-          setPreviousCardsById((currentPreviousCardsById) =>
-            mergePreviousCards(currentPreviousCardsById, snapshot.cards),
-          );
           setSnapshot(storedSnapshot);
         }
 
@@ -392,9 +489,6 @@ export function TvRatesBoard({ initialSnapshot }: TvRatesBoardProps) {
 
     if (storedSnapshot && isSnapshotNewer(storedSnapshot, initialSnapshot)) {
       startTransition(() => {
-        setPreviousCardsById((currentPreviousCardsById) =>
-          mergePreviousCards(currentPreviousCardsById, initialSnapshot.cards),
-        );
         setSnapshot(storedSnapshot);
       });
     }
@@ -402,6 +496,7 @@ export function TvRatesBoard({ initialSnapshot }: TvRatesBoardProps) {
 
   useEffect(() => {
     writeStoredSnapshot(snapshot);
+    setComparisonCardsById(buildCardsById(readYesterdaySnapshot(snapshot)?.cards ?? []));
   }, [snapshot]);
 
   useEffect(() => {
@@ -486,10 +581,10 @@ export function TvRatesBoard({ initialSnapshot }: TvRatesBoardProps) {
 
   const status = useMemo(() => buildStatus(snapshot, now, networkIssue), [networkIssue, now, snapshot]);
   const weatherLabel = useMemo(() => buildWeatherLabel(snapshot), [snapshot]);
-  const previousCard = currentCard ? previousCardsById[currentCard.id] : undefined;
+  const comparisonCard = currentCard ? comparisonCardsById[currentCard.id] : undefined;
   const currentCardTrend = useMemo(
-    () => (currentCard ? buildCardTrend(currentCard, previousCard) : {}),
-    [currentCard, previousCard],
+    () => (currentCard ? buildCardTrend(currentCard, comparisonCard) : {}),
+    [comparisonCard, currentCard],
   );
 
   if (!currentCard) {
