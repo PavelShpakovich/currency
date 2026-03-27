@@ -3,7 +3,7 @@ import { getMyfinCards } from '@/lib/sources/myfin';
 import { getBrestWeather } from '@/lib/sources/weather';
 import type { RatesSnapshot, SourceLoadResult } from '@/lib/types';
 
-const REFRESH_INTERVAL_MS = 60_000;
+const REFRESH_INTERVAL_MS = 5 * 60_000;
 const ROTATION_INTERVAL_MS = 10_000;
 
 // Cache TTL is slightly shorter than the client refresh interval so that a
@@ -122,14 +122,16 @@ export async function getRatesSnapshot(): Promise<RatesSnapshot> {
     return inFlight;
   }
 
-  inFlight = fetchFreshSnapshot().then((snapshot) => {
-    cache = { snapshot, expiresAt: Date.now() + CACHE_TTL_MS };
-    inFlight = null;
-    return snapshot;
-  }).catch((error: unknown) => {
-    inFlight = null;
-    throw error;
-  });
+  inFlight = fetchFreshSnapshot()
+    .then((snapshot) => {
+      cache = { snapshot, expiresAt: Date.now() + CACHE_TTL_MS };
+      inFlight = null;
+      return snapshot;
+    })
+    .catch((error: unknown) => {
+      inFlight = null;
+      throw error;
+    });
 
   return inFlight;
 }
