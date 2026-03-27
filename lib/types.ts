@@ -35,6 +35,8 @@ export type WeatherSnapshot = {
 };
 
 export type RatesSnapshot = {
+  citySlug: string;
+  cityName: string;
   cards: RateCard[];
   weather?: WeatherSnapshot;
   fetchedAt: string;

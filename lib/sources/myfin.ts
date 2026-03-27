@@ -1,9 +1,10 @@
+import { getCityBySlug, type SupportedCitySlug } from '@/lib/cities';
 import type { RateCard, SourceLoadResult } from '@/lib/types';
 
 // ---------------------------------------------------------------------------
 // Myfin adapter — HTML scraping
 // ---------------------------------------------------------------------------
-// This adapter fetches the myfin.by USD/BYN Brest page and extracts bank
+// This adapter fetches the myfin.by USD/BYN city page and extracts bank
 // exchange rates by matching known HTML class names and data-attributes.
 //
 // FRAGILITY NOTE: There is no public JSON API, so we parse raw HTML. If
@@ -14,13 +15,11 @@ import type { RateCard, SourceLoadResult } from '@/lib/types';
 // continues working normally.
 //
 // When this breaks:
-//   1. Inspect the new HTML structure on https://myfin.by/currency/usd/brest.
+//   1. Inspect the new HTML structure on https://myfin.by/currency/usd/minsk.
 //   2. Update the regex patterns in `parseRateCells` and `parseDefaultRows`.
 //   3. Run `npm run dev` and confirm bank cards appear before deploying.
 // ---------------------------------------------------------------------------
 
-const CITY_LABEL = 'Брест';
-const MYFIN_SOURCE_URL = 'https://myfin.by/currency/usd/brest';
 const DISPLAY_TIME_ZONE = 'Europe/Minsk';
 
 type MyfinSection = {
@@ -128,6 +127,10 @@ async function fetchMyfinPage(url: string) {
   return response.text();
 }
 
+function getMyfinSourceUrl(citySlug: SupportedCitySlug) {
+  return `https://myfin.by/currency/usd/${citySlug}`;
+}
+
 function parseRateCells(rowHtml: string) {
   const rateMatches = Array.from(
     rowHtml.matchAll(/<td class="currencies-courses__currency-cell [^"]*">\s*<span[^>]*>([\d.]+)<\/span>/g),
@@ -209,8 +212,10 @@ function parseDefaultRows(html: string): MyfinSection[] {
   return parsed.sort((left, right) => left.bankName.localeCompare(right.bankName, 'ru'));
 }
 
-export async function getMyfinCards(): Promise<SourceLoadResult> {
-  const html = await fetchMyfinPage(MYFIN_SOURCE_URL);
+export async function getMyfinCards(citySlug: SupportedCitySlug): Promise<SourceLoadResult> {
+  const city = getCityBySlug(citySlug);
+  const myfinSourceUrl = getMyfinSourceUrl(citySlug);
+  const html = await fetchMyfinPage(myfinSourceUrl);
   const sections = parseDefaultRows(html);
 
   if (!sections.length) {
@@ -219,7 +224,7 @@ export async function getMyfinCards(): Promise<SourceLoadResult> {
 
   const previousDate = getPreviousDate(new Date());
   const previousSections = previousDate
-    ? parseDefaultRows(await fetchMyfinPage(`${MYFIN_SOURCE_URL}/${formatArchiveDate(previousDate)}`).catch(() => ''))
+    ? parseDefaultRows(await fetchMyfinPage(`${myfinSourceUrl}/${formatArchiveDate(previousDate)}`).catch(() => ''))
     : [];
   const previousSectionsByAlias = previousSections.reduce<Record<string, MyfinSection>>((sectionsByAlias, section) => {
     sectionsByAlias[section.bankAlias] = section;
@@ -234,7 +239,7 @@ export async function getMyfinCards(): Promise<SourceLoadResult> {
     kind: 'bank-summary',
     priority: 20 + index,
     headline: section.bankName,
-    subheadline: `Наличный доллар • ${CITY_LABEL}`,
+    subheadline: `Наличный доллар • ${city.label}`,
     updatedAt,
     logoUrl: section.logoUrl,
     buyRate: section.buyRate,
@@ -243,8 +248,8 @@ export async function getMyfinCards(): Promise<SourceLoadResult> {
     previousSellRate: previousSectionsByAlias[section.bankAlias]?.sellRate,
     note:
       section.branchCount > 0
-        ? `${CITY_LABEL} • ${section.branchCount} ${section.branchCount === 1 ? 'отделение' : section.branchCount < 5 ? 'отделения' : 'отделений'} в выдаче Myfin`
-        : `${CITY_LABEL} • данные Myfin`,
+        ? `${city.label} • ${section.branchCount} ${section.branchCount === 1 ? 'отделение' : section.branchCount < 5 ? 'отделения' : 'отделений'} в выдаче Myfin`
+        : `${city.label} • данные Myfin`,
   }));
 
   return {

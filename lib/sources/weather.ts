@@ -1,17 +1,15 @@
+import { getCityBySlug, type SupportedCitySlug } from '@/lib/cities';
 import type { WeatherSnapshot } from '@/lib/types';
 
-const BREST_LATITUDE = 52.0976;
-const BREST_LONGITUDE = 23.7341;
 const WEATHER_REFRESH_INTERVAL_MS = 20 * 60_000;
-const OPEN_METEO_URL = `https://api.open-meteo.com/v1/forecast?latitude=${BREST_LATITUDE}&longitude=${BREST_LONGITUDE}&current=temperature_2m,apparent_temperature,weather_code,wind_speed_10m&wind_speed_unit=ms&timezone=auto`;
 
 type WeatherCacheEntry = {
   snapshot: WeatherSnapshot;
   expiresAt: number;
 };
 
-let weatherCache: WeatherCacheEntry | null = null;
-let weatherInFlight: Promise<WeatherSnapshot> | null = null;
+const weatherCache = new Map<SupportedCitySlug, WeatherCacheEntry>();
+const weatherInFlight = new Map<SupportedCitySlug, Promise<WeatherSnapshot>>();
 
 function describeWeather(code: number) {
   const descriptions: Record<number, string> = {
@@ -58,8 +56,10 @@ type OpenMeteoResponse = {
   };
 };
 
-async function fetchFreshWeather(): Promise<WeatherSnapshot> {
-  const response = await fetch(OPEN_METEO_URL, {
+async function fetchFreshWeatherForCity(citySlug: SupportedCitySlug): Promise<WeatherSnapshot> {
+  const city = getCityBySlug(citySlug);
+  const openMeteoUrl = `https://api.open-meteo.com/v1/forecast?latitude=${city.latitude}&longitude=${city.longitude}&current=temperature_2m,apparent_temperature,weather_code,wind_speed_10m&wind_speed_unit=ms&timezone=auto`;
+  const response = await fetch(openMeteoUrl, {
     cache: 'no-store',
   });
 
@@ -75,7 +75,7 @@ async function fetchFreshWeather(): Promise<WeatherSnapshot> {
   }
 
   return {
-    city: 'Брест',
+    city: city.label,
     temperatureC: current.temperature_2m,
     feelsLikeC: typeof current.apparent_temperature === 'number' ? current.apparent_temperature : undefined,
     windSpeedMs: typeof current.wind_speed_10m === 'number' ? current.wind_speed_10m : undefined,
@@ -84,30 +84,35 @@ async function fetchFreshWeather(): Promise<WeatherSnapshot> {
   };
 }
 
-export async function getBrestWeather(): Promise<WeatherSnapshot> {
+export async function getWeather(citySlug: SupportedCitySlug): Promise<WeatherSnapshot> {
   const now = Date.now();
+  const cachedWeather = weatherCache.get(citySlug) ?? null;
 
-  if (weatherCache !== null && now < weatherCache.expiresAt) {
-    return weatherCache.snapshot;
+  if (cachedWeather !== null && now < cachedWeather.expiresAt) {
+    return cachedWeather.snapshot;
   }
 
-  if (weatherInFlight !== null) {
-    return weatherInFlight;
+  const inFlightWeather = weatherInFlight.get(citySlug) ?? null;
+
+  if (inFlightWeather !== null) {
+    return inFlightWeather;
   }
 
-  weatherInFlight = fetchFreshWeather()
+  const nextInFlightWeather = fetchFreshWeatherForCity(citySlug)
     .then((snapshot) => {
-      weatherCache = {
+      weatherCache.set(citySlug, {
         snapshot,
         expiresAt: Date.now() + WEATHER_REFRESH_INTERVAL_MS,
-      };
-      weatherInFlight = null;
+      });
+      weatherInFlight.delete(citySlug);
       return snapshot;
     })
     .catch((error: unknown) => {
-      weatherInFlight = null;
+      weatherInFlight.delete(citySlug);
       throw error;
     });
 
-  return weatherInFlight;
+  weatherInFlight.set(citySlug, nextInFlightWeather);
+
+  return nextInFlightWeather;
 }

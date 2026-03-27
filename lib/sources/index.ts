@@ -1,6 +1,7 @@
+import { DEFAULT_CITY, getCityBySlug, type SupportedCitySlug } from '@/lib/cities';
 import { getNbrbCards } from '@/lib/sources/nbrb';
 import { getMyfinCards } from '@/lib/sources/myfin';
-import { getBrestWeather } from '@/lib/sources/weather';
+import { getWeather } from '@/lib/sources/weather';
 import type { RatesSnapshot, SourceLoadResult } from '@/lib/types';
 
 const REFRESH_INTERVAL_MS = 5 * 60_000;
@@ -16,17 +17,6 @@ type SourceAdapter = {
   load: () => Promise<SourceLoadResult>;
 };
 
-const adapters: SourceAdapter[] = [
-  {
-    name: 'NBRB',
-    load: getNbrbCards,
-  },
-  {
-    name: 'Myfin',
-    load: getMyfinCards,
-  },
-];
-
 // ---------------------------------------------------------------------------
 // In-memory snapshot cache
 // ---------------------------------------------------------------------------
@@ -41,11 +31,11 @@ type CacheEntry = {
   expiresAt: number;
 };
 
-let cache: CacheEntry | null = null;
+const cache = new Map<SupportedCitySlug, CacheEntry>();
 
 // In-flight promise deduplicated across concurrent requests that arrive while
 // a fetch is already in progress.
-let inFlight: Promise<RatesSnapshot> | null = null;
+const inFlight = new Map<SupportedCitySlug, Promise<RatesSnapshot>>();
 
 // ---------------------------------------------------------------------------
 
@@ -57,7 +47,22 @@ function toIssueMessage(sourceName: string, error: unknown) {
   return `${sourceName}: неизвестная ошибка при загрузке`;
 }
 
-async function fetchFreshSnapshot(): Promise<RatesSnapshot> {
+function buildAdapters(citySlug: SupportedCitySlug): SourceAdapter[] {
+  return [
+    {
+      name: 'NBRB',
+      load: getNbrbCards,
+    },
+    {
+      name: 'Myfin',
+      load: () => getMyfinCards(citySlug),
+    },
+  ];
+}
+
+async function fetchFreshSnapshot(citySlug: SupportedCitySlug): Promise<RatesSnapshot> {
+  const city = getCityBySlug(citySlug);
+  const adapters = buildAdapters(citySlug);
   const [settled, weatherResult] = await Promise.all([
     Promise.allSettled(
       adapters.map(async (adapter) => ({
@@ -65,7 +70,7 @@ async function fetchFreshSnapshot(): Promise<RatesSnapshot> {
         result: await adapter.load(),
       })),
     ),
-    Promise.allSettled([getBrestWeather()]),
+    Promise.allSettled([getWeather(citySlug)]),
   ]);
 
   const cards = settled
@@ -98,6 +103,8 @@ async function fetchFreshSnapshot(): Promise<RatesSnapshot> {
   }
 
   return {
+    citySlug: city.slug,
+    cityName: city.label,
     cards,
     weather,
     fetchedAt: new Date().toISOString(),
@@ -108,30 +115,36 @@ async function fetchFreshSnapshot(): Promise<RatesSnapshot> {
   };
 }
 
-export async function getRatesSnapshot(): Promise<RatesSnapshot> {
+export async function getRatesSnapshot(requestedCitySlug?: string): Promise<RatesSnapshot> {
+  const city = getCityBySlug(requestedCitySlug ?? DEFAULT_CITY.slug);
   const now = Date.now();
+  const cachedSnapshot = cache.get(city.slug) ?? null;
 
   // Serve from cache if still valid.
-  if (cache !== null && now < cache.expiresAt) {
-    return cache.snapshot;
+  if (cachedSnapshot !== null && now < cachedSnapshot.expiresAt) {
+    return cachedSnapshot.snapshot;
   }
 
   // Deduplicate concurrent requests: if a fetch is already in progress, wait
   // for it instead of starting a duplicate upstream call.
-  if (inFlight !== null) {
-    return inFlight;
+  const inFlightSnapshot = inFlight.get(city.slug) ?? null;
+
+  if (inFlightSnapshot !== null) {
+    return inFlightSnapshot;
   }
 
-  inFlight = fetchFreshSnapshot()
+  const nextInFlightSnapshot = fetchFreshSnapshot(city.slug)
     .then((snapshot) => {
-      cache = { snapshot, expiresAt: Date.now() + CACHE_TTL_MS };
-      inFlight = null;
+      cache.set(city.slug, { snapshot, expiresAt: Date.now() + CACHE_TTL_MS });
+      inFlight.delete(city.slug);
       return snapshot;
     })
     .catch((error: unknown) => {
-      inFlight = null;
+      inFlight.delete(city.slug);
       throw error;
     });
 
-  return inFlight;
+  inFlight.set(city.slug, nextInFlightSnapshot);
+
+  return nextInFlightSnapshot;
 }

@@ -3,6 +3,7 @@
 import Image from 'next/image';
 import { startTransition, useEffect, useEffectEvent, useMemo, useRef, useState } from 'react';
 
+import { getCityBySlug, getNearestSupportedCity } from '@/lib/cities';
 import type { RateCard, RatesSnapshot } from '@/lib/types';
 
 type TvRatesBoardProps = {
@@ -21,6 +22,7 @@ type ComparisonCardsById = Record<string, RateCard>;
 
 const SNAPSHOT_STORAGE_KEY = 'currency:last-rates-snapshot';
 const SNAPSHOT_HISTORY_STORAGE_KEY = 'currency:daily-rate-snapshots';
+const DETECTED_CITY_STORAGE_KEY = 'currency:detected-city';
 
 const rateFormatter = new Intl.NumberFormat('ru-RU', {
   minimumFractionDigits: 4,
@@ -141,6 +143,14 @@ function isSnapshotNewer(candidate: RatesSnapshot, baseline: RatesSnapshot | nul
   return getSnapshotTimestamp(candidate) > getSnapshotTimestamp(baseline);
 }
 
+function shouldReplaceSnapshot(candidate: RatesSnapshot, baseline: RatesSnapshot | null) {
+  if (!baseline) {
+    return true;
+  }
+
+  return candidate.citySlug !== baseline.citySlug || isSnapshotNewer(candidate, baseline);
+}
+
 function buildCardsById(cards: RateCard[]) {
   return cards.reduce<ComparisonCardsById>((cardsById, card) => {
     cardsById[card.id] = card;
@@ -148,13 +158,17 @@ function buildCardsById(cards: RateCard[]) {
   }, {});
 }
 
-function readStoredSnapshot() {
+function getScopedStorageKey(storageKey: string, citySlug: string) {
+  return `${storageKey}:${citySlug}`;
+}
+
+function readStoredSnapshot(citySlug: string) {
   if (typeof window === 'undefined') {
     return null;
   }
 
   try {
-    const storedValue = window.localStorage.getItem(SNAPSHOT_STORAGE_KEY);
+    const storedValue = window.localStorage.getItem(getScopedStorageKey(SNAPSHOT_STORAGE_KEY, citySlug));
 
     if (!storedValue) {
       return null;
@@ -166,13 +180,13 @@ function readStoredSnapshot() {
   }
 }
 
-function readStoredSnapshotHistory() {
+function readStoredSnapshotHistory(citySlug: string) {
   if (typeof window === 'undefined') {
     return {} as Record<string, RatesSnapshot>;
   }
 
   try {
-    const storedValue = window.localStorage.getItem(SNAPSHOT_HISTORY_STORAGE_KEY);
+    const storedValue = window.localStorage.getItem(getScopedStorageKey(SNAPSHOT_HISTORY_STORAGE_KEY, citySlug));
 
     if (!storedValue) {
       return {} as Record<string, RatesSnapshot>;
@@ -187,6 +201,36 @@ function readStoredSnapshotHistory() {
     return parsedValue as Record<string, RatesSnapshot>;
   } catch {
     return {} as Record<string, RatesSnapshot>;
+  }
+}
+
+function readDetectedCitySlug() {
+  if (typeof window === 'undefined') {
+    return null;
+  }
+
+  try {
+    const storedValue = window.localStorage.getItem(DETECTED_CITY_STORAGE_KEY);
+
+    if (!storedValue) {
+      return null;
+    }
+
+    return getCityBySlug(storedValue).slug;
+  } catch {
+    return null;
+  }
+}
+
+function writeDetectedCitySlug(citySlug: string) {
+  if (typeof window === 'undefined') {
+    return;
+  }
+
+  try {
+    window.localStorage.setItem(DETECTED_CITY_STORAGE_KEY, citySlug);
+  } catch {
+    // Ignore storage write failures; location detection still works for the session.
   }
 }
 
@@ -239,8 +283,8 @@ function writeStoredSnapshot(snapshot: RatesSnapshot) {
 
   try {
     const dateKey = getDateKey(snapshot.fetchedAt);
-    const legacySnapshot = readStoredSnapshot();
-    const nextHistory = readStoredSnapshotHistory();
+    const legacySnapshot = readStoredSnapshot(snapshot.citySlug);
+    const nextHistory = readStoredSnapshotHistory(snapshot.citySlug);
 
     if (legacySnapshot) {
       const legacyDateKey = getDateKey(legacySnapshot.fetchedAt);
@@ -252,10 +296,13 @@ function writeStoredSnapshot(snapshot: RatesSnapshot) {
 
     if (dateKey) {
       nextHistory[dateKey] = snapshot;
-      window.localStorage.setItem(SNAPSHOT_HISTORY_STORAGE_KEY, JSON.stringify(pruneSnapshotHistory(nextHistory)));
+      window.localStorage.setItem(
+        getScopedStorageKey(SNAPSHOT_HISTORY_STORAGE_KEY, snapshot.citySlug),
+        JSON.stringify(pruneSnapshotHistory(nextHistory)),
+      );
     }
 
-    window.localStorage.setItem(SNAPSHOT_STORAGE_KEY, JSON.stringify(snapshot));
+    window.localStorage.setItem(getScopedStorageKey(SNAPSHOT_STORAGE_KEY, snapshot.citySlug), JSON.stringify(snapshot));
   } catch {
     // Ignore storage write failures; the live snapshot still works.
   }
@@ -268,14 +315,14 @@ function readYesterdaySnapshot(snapshot: RatesSnapshot) {
     return null;
   }
 
-  const history = readStoredSnapshotHistory();
+  const history = readStoredSnapshotHistory(snapshot.citySlug);
   const historySnapshot = history[yesterdayDateKey];
 
   if (historySnapshot) {
     return historySnapshot;
   }
 
-  const legacySnapshot = readStoredSnapshot();
+  const legacySnapshot = readStoredSnapshot(snapshot.citySlug);
 
   if (legacySnapshot && getDateKey(legacySnapshot.fetchedAt) === yesterdayDateKey) {
     return legacySnapshot;
@@ -448,9 +495,11 @@ export function TvRatesBoard({ initialSnapshot }: TvRatesBoardProps) {
   const cards = snapshot.cards;
   const currentCard = cards[activeIndex] ?? cards[0];
 
-  const refreshSnapshot = useEffectEvent(async () => {
+  const refreshSnapshot = useEffectEvent(async (requestedCitySlug?: string) => {
+    const citySlug = getCityBySlug(requestedCitySlug ?? snapshot.citySlug).slug;
+
     try {
-      const response = await fetch('/api/rates', {
+      const response = await fetch(`/api/rates?city=${citySlug}`, {
         cache: 'no-store',
       });
 
@@ -461,17 +510,17 @@ export function TvRatesBoard({ initialSnapshot }: TvRatesBoardProps) {
       const nextSnapshot = (await response.json()) as RatesSnapshot;
 
       startTransition(() => {
-        if (isSnapshotNewer(nextSnapshot, snapshot)) {
+        if (shouldReplaceSnapshot(nextSnapshot, snapshot)) {
           setSnapshot(nextSnapshot);
         }
 
         setNetworkIssue(null);
       });
     } catch {
-      const storedSnapshot = readStoredSnapshot();
+      const storedSnapshot = readStoredSnapshot(citySlug);
 
       startTransition(() => {
-        if (storedSnapshot && isSnapshotNewer(storedSnapshot, snapshot)) {
+        if (storedSnapshot && shouldReplaceSnapshot(storedSnapshot, snapshot)) {
           setSnapshot(storedSnapshot);
         }
 
@@ -485,14 +534,46 @@ export function TvRatesBoard({ initialSnapshot }: TvRatesBoardProps) {
   });
 
   useEffect(() => {
-    const storedSnapshot = readStoredSnapshot();
+    const storedSnapshot = readStoredSnapshot(initialSnapshot.citySlug);
 
-    if (storedSnapshot && isSnapshotNewer(storedSnapshot, initialSnapshot)) {
+    if (storedSnapshot && shouldReplaceSnapshot(storedSnapshot, initialSnapshot)) {
       startTransition(() => {
         setSnapshot(storedSnapshot);
       });
     }
   }, [initialSnapshot]);
+
+  useEffect(() => {
+    const storedCitySlug = readDetectedCitySlug();
+
+    if (storedCitySlug && storedCitySlug !== snapshot.citySlug) {
+      void refreshSnapshot(storedCitySlug);
+    }
+
+    if (!navigator.geolocation) {
+      return;
+    }
+
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        const nearestCity = getNearestSupportedCity(position.coords.latitude, position.coords.longitude);
+
+        writeDetectedCitySlug(nearestCity.slug);
+
+        if (nearestCity.slug !== snapshot.citySlug) {
+          void refreshSnapshot(nearestCity.slug);
+        }
+      },
+      () => {
+        writeDetectedCitySlug(snapshot.citySlug);
+      },
+      {
+        enableHighAccuracy: false,
+        maximumAge: 15 * 60_000,
+        timeout: 10_000,
+      },
+    );
+  }, []);
 
   useEffect(() => {
     writeStoredSnapshot(snapshot);
@@ -599,7 +680,7 @@ export function TvRatesBoard({ initialSnapshot }: TvRatesBoardProps) {
         <div className='flex flex-wrap items-start justify-between gap-x-6 gap-y-3'>
           <div className='flex min-w-0 max-w-full flex-1 flex-col gap-2'>
             <p className='text-sm font-semibold uppercase tracking-[0.28em] text-[color:var(--muted)] lg:text-base'>
-              USD / BYN • Брест
+              {`USD / BYN • ${snapshot.cityName}`}
             </p>
             {weatherLabel ? (
               <div className='metal-panel max-w-full rounded-[1.4rem] px-4 py-3 lg:px-6 lg:py-4'>
